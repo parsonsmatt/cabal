@@ -1,7 +1,5 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
@@ -9,6 +7,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+#ifdef GIT_REV
+{-# LANGUAGE TemplateHaskell #-}
+#endif
 
 -----------------------------------------------------------------------------
 
@@ -28,6 +29,7 @@
 -- various directory and file functions that do extra logging.
 module Distribution.Simple.Utils
   ( cabalVersion
+  , cabalGitInfo
 
     -- * logging and errors
   , dieNoVerbosity
@@ -287,6 +289,16 @@ import System.IO.Unsafe
 import qualified System.Process as Process
 import qualified Text.PrettyPrint as Disp
 
+#ifdef GIT_REV
+import Data.Either (isLeft)
+import GitHash
+  ( giHash
+  , giBranch
+  , giCommitDate
+  , tGitInfoCwdTry
+  )
+#endif
+
 -- We only get our own version number when we're building with ourselves
 cabalVersion :: Version
 #if defined(BOOTSTRAPPED_CABAL)
@@ -295,6 +307,28 @@ cabalVersion = mkVersion' Paths_Cabal.version
 cabalVersion = mkVersion [CABAL_VERSION]
 #else
 cabalVersion = mkVersion [3,0]  --used when bootstrapping
+#endif
+
+-- |
+-- `Cabal` Git information. Only filled in if built in a Git tree in
+-- developmnent mode and Template Haskell is available.
+cabalGitInfo :: String
+#ifdef GIT_REV
+cabalGitInfo = concat [ "(commit "
+                      , giHash'
+                      , branchInfo
+                      , ", "
+                      , either (const "") giCommitDate gi'
+                      , ")"
+                      ]
+  where
+    gi' = $$tGitInfoCwdTry
+    giHash' = take 7 . either (const "") giHash $ gi'
+    branchInfo | isLeft gi' = ""
+               | either id giBranch gi' == "master" = ""
+               | otherwise = " on " <> either id giBranch gi'
+#else
+cabalGitInfo = ""
 #endif
 
 -- ----------------------------------------------------------------------------
@@ -388,9 +422,9 @@ die' verbosity msg = withFrozenCallStack $ do
     =<< pure . addErrorPrefix
     =<< prefixWithProgName msg
 
--- Type which will be a wrapper for cabal -expections and cabal-install exceptions
+-- Type which will be a wrapper for cabal -exceptions and cabal-install exceptions
 data VerboseException a = VerboseException CallStack POSIXTime Verbosity a
-  deriving (Show, Typeable)
+  deriving (Show)
 
 -- Function which will replace the existing die' call sites
 dieWithException :: (HasCallStack, Show a1, Typeable a1, Exception (VerboseException a1)) => Verbosity -> a1 -> IO a
@@ -534,7 +568,7 @@ verbosityHandle verbosity
 warn :: Verbosity -> String -> IO ()
 warn verbosity msg = warnMessage "Warning" verbosity msg
 
--- | Like 'warn', but prepend @Error: …@ instead of @Waring: …@ before the
+-- | Like 'warn', but prepend @Error: …@ instead of @Warning: …@ before the
 -- the message. Useful when you want to highlight the condition is an error
 -- but do not want to quit the program yet.
 warnError :: Verbosity -> String -> IO ()

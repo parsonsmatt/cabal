@@ -457,8 +457,8 @@ readRepoIndex verbosity repoCtxt repo idxState =
       if isDoesNotExistError e
         then do
           case repo of
-            RepoRemote{..} -> dieWithException verbosity $ MissingPackageList repoRemote
-            RepoSecure{..} -> dieWithException verbosity $ MissingPackageList repoRemote
+            RepoRemote{..} -> warn verbosity $ exceptionMessageCabalInstall $ MissingPackageList repoRemote
+            RepoSecure{..} -> warn verbosity $ exceptionMessageCabalInstall $ MissingPackageList repoRemote
             RepoLocalNoIndex local _ ->
               warn verbosity $
                 "Error during construction of local+noindex "
@@ -692,7 +692,7 @@ data PreferredVersionsParseError = PreferredVersionsParseError
   , preferredVersionsOriginalDependency :: String
   -- ^ Original input that produced the parser error.
   }
-  deriving (Generic, Read, Show, Eq, Ord, Typeable)
+  deriving (Generic, Read, Show, Eq, Ord)
 
 -- | Parse `preferred-versions` file, collecting parse errors that can be shown
 -- in error messages.

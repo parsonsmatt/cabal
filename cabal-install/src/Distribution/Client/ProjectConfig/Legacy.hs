@@ -126,6 +126,7 @@ import Distribution.Simple.Setup
 import Distribution.Simple.Utils
   ( debug
   , lowercase
+  , noticeDoc
   )
 import Distribution.Types.CondTree
   ( CondBranch (..)
@@ -141,6 +142,7 @@ import Distribution.Utils.NubList
   , overNubList
   , toNubList
   )
+import Distribution.Utils.String (trim)
 
 import Distribution.Client.HttpUtils
 import Distribution.Client.ParseUtils
@@ -206,12 +208,10 @@ type ProjectConfigSkeleton = CondTree ConfVar [ProjectConfigPath] ProjectConfig
 singletonProjectConfigSkeleton :: ProjectConfig -> ProjectConfigSkeleton
 singletonProjectConfigSkeleton x = CondNode x mempty mempty
 
-instantiateProjectConfigSkeletonFetchingCompiler :: Monad m => m (OS, Arch, CompilerInfo) -> FlagAssignment -> ProjectConfigSkeleton -> m ProjectConfig
-instantiateProjectConfigSkeletonFetchingCompiler fetch flags skel
-  | null (toListOf traverseCondTreeV skel) = pure $ fst (ignoreConditions skel)
-  | otherwise = do
-      (os, arch, impl) <- fetch
-      pure $ instantiateProjectConfigSkeletonWithCompiler os arch impl flags skel
+instantiateProjectConfigSkeletonFetchingCompiler :: (OS, Arch, CompilerInfo) -> FlagAssignment -> ProjectConfigSkeleton -> ProjectConfig
+instantiateProjectConfigSkeletonFetchingCompiler (os, arch, impl) flags skel
+  | null (toListOf traverseCondTreeV skel) = fst (ignoreConditions skel)
+  | otherwise = instantiateProjectConfigSkeletonWithCompiler os arch impl flags skel
 
 instantiateProjectConfigSkeletonWithCompiler :: OS -> Arch -> CompilerInfo -> FlagAssignment -> ProjectConfigSkeleton -> ProjectConfig
 instantiateProjectConfigSkeletonWithCompiler os arch impl _flags skel = go $ mapTreeConds (fst . simplifyWithSysParams os arch impl) skel
@@ -276,6 +276,9 @@ parseProjectSkeleton cacheDir httpTransport verbosity projectDir source (Project
         if isCyclicConfigPath normLocPath
           then pure . parseFail $ ParseUtils.FromString (render $ cyclicalImportMsg normLocPath) Nothing
           else do
+            when
+              (isUntrimmedUriConfigPath importLocPath)
+              (noticeDoc verbosity $ untrimmedUriImportMsg (Disp.text "Warning:") importLocPath)
             normSource <- canonicalizeConfigPath projectDir source
             let fs = (\z -> CondNode z [normLocPath] mempty) <$> fieldsToConfig normSource (reverse acc)
             res <- parseProjectSkeleton cacheDir httpTransport verbosity projectDir importLocPath . ProjectConfigToParse =<< fetchImportConfig normLocPath
@@ -344,7 +347,7 @@ parseProjectSkeleton cacheDir httpTransport verbosity projectDir source (Project
       fetch pci
 
     fetch :: FilePath -> IO BS.ByteString
-    fetch pci = case parseURI pci of
+    fetch pci = case parseURI $ trim pci of
       Just uri -> do
         let fp = cacheDir </> map (\x -> if isPathSeparator x then '_' else x) (makeValid $ show uri)
         createDirectoryIfMissing True cacheDir
@@ -861,7 +864,7 @@ convertLegacyBuildOnlyFlags
   configFlags
   installFlags
   clientInstallFlags
-  haddockFlags
+  _haddockFlags
   _testFlags
   _benchmarkFlags =
     ProjectConfigBuildOnly{..}
@@ -880,6 +883,7 @@ convertLegacyBuildOnlyFlags
 
       CommonSetupFlags
         { setupVerbosity = projectConfigVerbosity
+        , setupKeepTempFiles = projectConfigKeepTempFiles
         } = commonFlags
 
       InstallFlags
@@ -898,10 +902,6 @@ convertLegacyBuildOnlyFlags
         , installKeepGoing = projectConfigKeepGoing
         , installOfflineMode = projectConfigOfflineMode
         } = installFlags
-
-      HaddockFlags
-        { haddockKeepTempFiles = projectConfigKeepTempFiles -- TODO: this ought to live elsewhere
-        } = haddockFlags
 
 convertToLegacyProjectConfig :: ProjectConfig -> LegacyProjectConfig
 convertToLegacyProjectConfig
@@ -975,6 +975,7 @@ convertToLegacySharedConfig
         mempty
           { setupVerbosity = projectConfigVerbosity
           , setupDistPref = fmap makeSymbolicPath $ projectConfigDistDir
+          , setupKeepTempFiles = projectConfigKeepTempFiles
           }
 
       configFlags =
@@ -1047,8 +1048,7 @@ convertToLegacySharedConfig
 convertToLegacyAllPackageConfig :: ProjectConfig -> LegacyPackageConfig
 convertToLegacyAllPackageConfig
   ProjectConfig
-    { projectConfigBuildOnly = ProjectConfigBuildOnly{..}
-    , projectConfigShared = ProjectConfigShared{..}
+    { projectConfigShared = ProjectConfigShared{..}
     } =
     LegacyPackageConfig
       { legacyConfigureFlags = configFlags
@@ -1124,8 +1124,6 @@ convertToLegacyAllPackageConfig
 
       haddockFlags =
         mempty
-          { haddockKeepTempFiles = projectConfigKeepTempFiles
-          }
 
 convertToLegacyPerPackageConfig :: PackageConfig -> LegacyPackageConfig
 convertToLegacyPerPackageConfig PackageConfig{..} =
@@ -1225,7 +1223,6 @@ convertToLegacyPerPackageConfig PackageConfig{..} =
         , haddockQuickJump = packageConfigHaddockQuickJump
         , haddockHscolourCss = packageConfigHaddockHscolourCss
         , haddockContents = packageConfigHaddockContents
-        , haddockKeepTempFiles = mempty
         , haddockIndex = packageConfigHaddockIndex
         , haddockBaseUrl = packageConfigHaddockBaseUrl
         , haddockResourcesDir = packageConfigHaddockResourcesDir
@@ -1408,7 +1405,8 @@ legacySharedConfigFieldDescrs constraintSrc =
               configPackageDBs
               (\v conf -> conf{configPackageDBs = v})
           ]
-        . filterFields (["verbose", "builddir"] ++ map optionName installDirsOptions)
+        . aliasField "keep-temp-files" "haddock-keep-temp-files"
+        . filterFields (["verbose", "builddir", "keep-temp-files"] ++ map optionName installDirsOptions)
         . commandOptionsToFields
         $ configureOptions ParseArgs
     , liftFields
@@ -1630,7 +1628,6 @@ legacyPackageConfigFieldDescrs =
             , "hscolour-css"
             , "contents-location"
             , "index-location"
-            , "keep-temp-files"
             , "base-url"
             , "resources-dir"
             , "output-dir"
@@ -2073,9 +2070,3 @@ showTokenQ "" = Disp.empty
 showTokenQ x@('-' : '-' : _) = Disp.text (show x)
 showTokenQ x@('.' : []) = Disp.text (show x)
 showTokenQ x = showToken x
-
--- Handy util
-addFields
-  :: [FieldDescr a]
-  -> ([FieldDescr a] -> [FieldDescr a])
-addFields = (++)

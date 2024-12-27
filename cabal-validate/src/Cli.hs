@@ -5,13 +5,14 @@ module Cli
   , HackageTests (..)
   , Compiler (..)
   , VersionParseException (..)
+  , Verbosity (..)
+  , whenVerbose
   )
 where
 
 import Control.Applicative (Alternative (many, (<|>)), (<**>))
 import Control.Exception (Exception (displayException), throw)
 import Control.Monad (forM_, when)
-import Data.Data (Typeable)
 import Data.Maybe (listToMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as T (toStrict)
@@ -53,7 +54,7 @@ import Step (Step (..), displayStep, parseStep)
 
 -- | Command-line options, resolved with context from the environment.
 data Opts = Opts
-  { verbose :: Bool
+  { verbosity :: Verbosity
   -- ^ Whether to display build and test output.
   , jobs :: Int
   -- ^ How many jobs to use when running tests.
@@ -116,6 +117,17 @@ data Compiler = Compiler
   }
   deriving (Show)
 
+-- | A verbosity level, for log output.
+data Verbosity
+  = Quiet
+  | Info
+  | Verbose
+  deriving (Show, Eq, Ord)
+
+-- | Run an action only if the `verbosity` is `Verbose` or higher.
+whenVerbose :: Applicative f => Opts -> f () -> f ()
+whenVerbose opts action = when (verbosity opts >= Verbose) action
+
 -- | An `Exception` thrown when parsing @--numeric-version@ output from a compiler.
 data VersionParseException = VersionParseException
   { versionInput :: String
@@ -123,7 +135,7 @@ data VersionParseException = VersionParseException
   , versionExecutable :: FilePath
   -- ^ The compiler which produced the string.
   }
-  deriving (Typeable, Show)
+  deriving (Show)
 
 instance Exception VersionParseException where
   displayException exception =
@@ -179,11 +191,7 @@ resolveOpts opts = do
           then rawSteps opts
           else
             concat
-              [
-                [ PrintConfig
-                , PrintToolVersions
-                , Build
-                ]
+              [ [Build]
               , optional (rawDoctest opts) Doctest
               , optional (rawRunLibTests opts) LibTests
               , optional (rawRunLibSuite opts) LibSuite
@@ -191,7 +199,6 @@ resolveOpts opts = do
               , optional (rawRunCliTests opts && not (rawLibOnly opts)) CliTests
               , optional (rawRunCliSuite opts && not (rawLibOnly opts)) CliSuite
               , optionals (rawSolverBenchmarks opts) [SolverBenchmarksTests, SolverBenchmarksRun]
-              , [TimeSummary]
               ]
 
       targets' =
@@ -233,8 +240,13 @@ resolveOpts opts = do
           else "cabal.validate.project"
 
       tastyArgs' =
-        "--hide-successes"
-          : maybe
+        maybe
+          -- If neither `--hide-successes` or `--no-hide-successes` was given, then
+          -- only `--hide-successes` if `--quiet` is given.
+          (optional (rawVerbosity opts <= Quiet) "--hide-successes")
+          (\hideSuccesses -> optional hideSuccesses "--hide-successes")
+          (rawTastyHideSuccesses opts)
+          ++ maybe
             []
             (\tastyPattern -> ["--pattern", tastyPattern])
             (rawTastyPattern opts)
@@ -257,7 +269,7 @@ resolveOpts opts = do
 
   pure
     Opts
-      { verbose = rawVerbose opts
+      { verbosity = rawVerbosity opts
       , jobs = jobs'
       , cwd = cwd'
       , startTime = startTime'
@@ -275,13 +287,14 @@ resolveOpts opts = do
 -- | Literate command-line options as supplied by the user, before resolving
 -- defaults and other values from the environment.
 data RawOpts = RawOpts
-  { rawVerbose :: Bool
+  { rawVerbosity :: Verbosity
   , rawJobs :: Maybe Int
   , rawCompiler :: FilePath
   , rawCabal :: FilePath
   , rawExtraCompilers :: [FilePath]
   , rawTastyPattern :: Maybe String
   , rawTastyArgs :: [String]
+  , rawTastyHideSuccesses :: Maybe Bool
   , rawDoctest :: Bool
   , rawSteps :: [Step]
   , rawListSteps :: Bool
@@ -302,14 +315,14 @@ rawOptsParser :: Parser RawOpts
 rawOptsParser =
   RawOpts
     <$> ( flag'
-            True
+            Verbose
             ( short 'v'
                 <> long "verbose"
                 <> help "Always display build and test output"
             )
             <|> flag
-              False
-              False
+              Info
+              Quiet
               ( short 'q'
                   <> long "quiet"
                   <> help "Silence build and test output"
@@ -351,6 +364,10 @@ rawOptsParser =
           ( long "tasty-arg"
               <> help "Extra arguments to pass to Tasty test suites"
           )
+      )
+    <*> maybeBoolOption
+      "hide-successes"
+      ( help "Do not print tests that passed successfully"
       )
     <*> boolOption
       False
@@ -429,6 +446,12 @@ boolOption' defaultValue trueName falseName modifiers =
 boolOption :: Bool -> String -> Mod FlagFields Bool -> Parser Bool
 boolOption defaultValue trueName =
   boolOption' defaultValue trueName ("no-" <> trueName)
+
+-- | Like `boolOption`, but can tell if an option was passed or not.
+maybeBoolOption :: String -> Mod FlagFields (Maybe Bool) -> Parser (Maybe Bool)
+maybeBoolOption trueName modifiers =
+  flag' (Just True) (modifiers <> long trueName)
+    <|> flag Nothing (Just False) (modifiers <> hidden <> long ("no-" <> trueName))
 
 -- | Full `Parser` for `RawOpts`, which includes a @--help@ argument and
 -- information about the program.

@@ -173,7 +173,8 @@ import Distribution.Client.Utils
   , relaxEncodingErrors
   )
 import Distribution.Client.Version
-  ( cabalInstallVersion
+  ( cabalInstallGitInfo
+  , cabalInstallVersion
   )
 
 import Distribution.Package (packageId)
@@ -227,7 +228,8 @@ import Distribution.Simple.Program
 import Distribution.Simple.Program.Db (reconfigurePrograms)
 import qualified Distribution.Simple.Setup as Cabal
 import Distribution.Simple.Utils
-  ( cabalVersion
+  ( cabalGitInfo
+  , cabalVersion
   , createDirectoryIfMissingVerbose
   , dieNoVerbosity
   , dieWithException
@@ -236,6 +238,7 @@ import Distribution.Simple.Utils
   , notice
   , topHandler
   , tryFindPackageDesc
+  , warn
   )
 import Distribution.Text
   ( display
@@ -413,9 +416,16 @@ mainWorker args = do
       putStrLn $
         "cabal-install version "
           ++ display cabalInstallVersion
+          ++ " "
+          ++ cabalInstallGitInfo
           ++ "\ncompiled using version "
           ++ display cabalVersion
           ++ " of the Cabal library "
+          ++ cabalGitInfo'
+      where
+        cabalGitInfo'
+          | cabalGitInfo == cabalInstallGitInfo = "(in-tree)"
+          | otherwise = cabalGitInfo
 
     commands = map commandFromSpec commandSpecs
     commandSpecs =
@@ -1343,6 +1353,7 @@ checkAction checkFlags extraArgs _globalFlags = do
 formatAction :: Flag Verbosity -> [String] -> Action
 formatAction verbosityFlag extraArgs _globalFlags = do
   let verbosity = fromFlag verbosityFlag
+  warn verbosity "This command is not a full formatter yet"
   path <- case extraArgs of
     [] -> relativeSymbolicPath <$> tryFindPackageDesc verbosity Nothing
     (p : _) -> return $ makeSymbolicPath p

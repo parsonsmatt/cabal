@@ -1,6 +1,5 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
@@ -59,7 +58,7 @@ data ReplOptions = ReplOptions
   , replOptionsNoLoad :: Flag Bool
   , replOptionsFlagOutput :: Flag FilePath
   }
-  deriving (Show, Generic, Typeable)
+  deriving (Show, Generic)
 
 pattern ReplCommonFlags
   :: Flag Verbosity
@@ -102,7 +101,7 @@ data ReplFlags = ReplFlags
   , replReload :: Flag Bool
   , replReplOptions :: ReplOptions
   }
-  deriving (Show, Generic, Typeable)
+  deriving (Show, Generic)
 
 instance Binary ReplFlags
 instance Structured ReplFlags
@@ -133,8 +132,7 @@ replCommand progDb =
     , commandDescription = Just $ \pname ->
         wrapText $
           "If the current directory contains no package, ignores COMPONENT "
-            ++ "parameters and opens an interactive interpreter session; if a "
-            ++ "sandbox is present, its package database will be used.\n"
+            ++ "parameters and opens an interactive interpreter session.\n"
             ++ "\n"
             ++ "Otherwise, (re)configures with the given or default flags, and "
             ++ "loads the interpreter with the relevant modules. For executables, "

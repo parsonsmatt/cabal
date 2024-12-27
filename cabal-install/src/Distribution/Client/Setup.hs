@@ -1,7 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
 -----------------------------------------------------------------------------
@@ -652,9 +651,11 @@ filterCommonFlags flags cabalLibVersion
     flags_latest = flags
     flags_3_13_0 =
       flags_latest
-        { setupWorkingDir = NoFlag
+        { -- Cabal < 3.13 does not support the --working-dir flag.
+          setupWorkingDir = NoFlag
+        , -- Or the --keep-temp-files flag.
+          setupKeepTempFiles = NoFlag
         }
-    -- Cabal < 3.13 does not support the --working-dir flag.
     flags_2_1_0 =
       flags_3_13_0
         { -- Cabal < 2.1 doesn't know about -v +timestamp modifier
@@ -1268,7 +1269,10 @@ filterReplFlags :: ReplFlags -> Version -> ReplFlags
 filterReplFlags flags cabalLibVersion =
   flags
     { replCommonFlags =
-        filterCommonFlags (replCommonFlags flags) cabalLibVersion
+        (filterCommonFlags (replCommonFlags flags) cabalLibVersion)
+          { -- `cabal repl` knew about `--keep-temp-files` before other commands did.
+            setupKeepTempFiles = setupKeepTempFiles (replCommonFlags flags)
+          }
     }
 
 -- ------------------------------------------------------------
@@ -1671,7 +1675,7 @@ data CheckFlags = CheckFlags
   { checkVerbosity :: Flag Verbosity
   , checkIgnore :: [CheckExplanationIDString]
   }
-  deriving (Show, Typeable)
+  deriving (Show)
 
 defaultCheckFlags :: CheckFlags
 defaultCheckFlags =
@@ -2471,7 +2475,10 @@ filterHaddockFlags flags cabalLibVersion
     flags_latest =
       flags
         { haddockCommonFlags =
-            filterCommonFlags (haddockCommonFlags flags) cabalLibVersion
+            (filterCommonFlags (haddockCommonFlags flags) cabalLibVersion)
+              { -- `cabal haddock` knew about `--keep-temp-files` before other commands did.
+                setupKeepTempFiles = setupKeepTempFiles (haddockCommonFlags flags)
+              }
         }
 
     flags_2_3_0 =

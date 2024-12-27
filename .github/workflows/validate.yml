@@ -80,8 +80,9 @@ jobs:
         # support, so the PR *must* have a changelog entry.
         ghc:
           [
+            "9.12.1",
             "9.10.1",
-            "9.8.2",
+            "9.8.4",
             "9.6.6",
             "9.4.8",
             "9.2.8",
@@ -191,12 +192,6 @@ jobs:
             FLAGS="$FLAGS --complete-hackage-tests"
           fi
           echo "FLAGS=$FLAGS" >> "$GITHUB_ENV"
-
-      - name: Validate print-config
-        run: sh validate.sh $FLAGS -s print-config
-
-      - name: Validate print-tool-versions
-        run: sh validate.sh $FLAGS -s print-tool-versions
 
       - name: Validate build
         run: sh validate.sh $FLAGS -s build
@@ -454,9 +449,6 @@ jobs:
       - name: Untar the cabal executable
         run: tar -xzf "./cabal-head/cabal-head-${{ runner.os }}-$CABAL_ARCH.tar.gz" -C cabal-head
 
-      - name: print-config using cabal HEAD
-        run: sh validate.sh ${{ env.COMMON_FLAGS }} --with-cabal ./cabal-head/cabal -s print-config
-
       # We dont use cache to force a build with a fresh store dir and build dir
       # This way we check cabal can build all its dependencies
       - name: Build using cabal HEAD
@@ -473,11 +465,17 @@ jobs:
     needs: [validate, validate-old-ghcs, build-alpine, dogfooding]
 
     steps:
-      # for now this is hardcoded. is there a better way?
+      - uses: liudonghua123/delete-release-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          release_name: 'cabal-head'
+
       - uses: actions/download-artifact@v4
         with:
           pattern: cabal-*
           path: binaries
+          merge-multiple: true
 
       - name: Create GitHub prerelease
         uses: softprops/action-gh-release@v2
@@ -490,7 +488,7 @@ jobs:
     name: Create a GitHub LTS prerelease with the binary artifacts
     runs-on: ubuntu-latest
     # The LTS branch is hardcoded for now, update it on a new LTS!
-    # if: github.ref == 'refs/heads/3.12'
+    if: github.ref == 'refs/heads/3.12'
     permissions:
       contents: write
 
@@ -498,10 +496,17 @@ jobs:
     needs: [validate, validate-old-ghcs, build-alpine, dogfooding]
 
     steps:
+    - uses: liudonghua123/delete-release-action@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        release_name: 'cabal-lts-head'
+
     - uses: actions/download-artifact@v4
       with:
         pattern: cabal-*
         path: binaries
+        merge-multiple: true
 
     - run: |
         # bash-ism, but we forced bash above
@@ -510,10 +515,7 @@ jobs:
           mv "$f" "cabal-lts-${f##cabal-}"
         done
 
-    - run: echo ${{ github.ref }}
-
     - name: Create GitHub prerelease
-      if: github.ref == 'refs/heads/3.12'
       uses: softprops/action-gh-release@v2
       with:
         tag_name: cabal-lts-head

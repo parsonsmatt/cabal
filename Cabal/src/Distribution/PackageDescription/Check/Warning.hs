@@ -1,5 +1,4 @@
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 
@@ -25,7 +24,7 @@ module Distribution.PackageDescription.Check.Warning
   , ppPackageCheck
   , ppCheckExplanationId
   , isHackageDistError
-  , extractCheckExplantion
+  , extractCheckExplanation
   , filterPackageChecksById
   , filterPackageChecksByIdString
   ) where
@@ -124,7 +123,7 @@ filterPackageChecksById cs is = filter ff cs
     ff c =
       flip notElem is
         . checkExplanationId
-        . extractCheckExplantion
+        . extractCheckExplanation
         $ c
 
 -- | Filter Package Check by Check explanation /string/.
@@ -293,14 +292,14 @@ data CheckExplanation
 --      to be a ad hoc monoid.
 
 -- Convenience.
-extractCheckExplantion :: PackageCheck -> CheckExplanation
-extractCheckExplantion (PackageBuildImpossible e) = e
-extractCheckExplantion (PackageBuildWarning e) = e
-extractCheckExplantion (PackageDistSuspicious e) = e
-extractCheckExplantion (PackageDistSuspiciousWarn e) = e
-extractCheckExplantion (PackageDistInexcusable e) = e
+extractCheckExplanation :: PackageCheck -> CheckExplanation
+extractCheckExplanation (PackageBuildImpossible e) = e
+extractCheckExplanation (PackageBuildWarning e) = e
+extractCheckExplanation (PackageDistSuspicious e) = e
+extractCheckExplanation (PackageDistSuspiciousWarn e) = e
+extractCheckExplanation (PackageDistInexcusable e) = e
 
--- | Identifier for the speficic 'CheckExplanation'. This ensures `--ignore`
+-- | Identifier for the specific 'CheckExplanation'. This ensures `--ignore`
 -- can output a warning on unrecognised values.
 -- ☞ N.B.: should be kept in sync with 'CheckExplanation'.
 data CheckExplanationID
@@ -590,7 +589,7 @@ type CheckExplanationIDString = String
 
 -- A one-word identifier for each CheckExplanation
 --
--- ☞ N.B: if you modify anything here, remeber to change the documentation
+-- ☞ N.B: if you modify anything here, remember to change the documentation
 -- in @doc/cabal-commands.rst@!
 ppCheckExplanationId :: CheckExplanationID -> CheckExplanationIDString
 ppCheckExplanationId CIParseWarning = "parser-warning"

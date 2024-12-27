@@ -1,5 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
-
 -----------------------------------------------------------------------------
 
 -- Module      :  Distribution.Simple.Errors
@@ -173,7 +171,7 @@ data CabalException
   | UnknownVersionDb String VersionRange FilePath
   | MissingCoveredInstalledLibrary UnitId
   | SetupHooksException SetupHooksException
-  deriving (Show, Typeable)
+  deriving (Show)
 
 exceptionCode :: CabalException -> Int
 exceptionCode e = case e of

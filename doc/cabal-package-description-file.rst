@@ -1114,14 +1114,14 @@ the :pkg-field:`test-module` field.
     An optional list of preprocessors which can generate new modules
     for use in the test-suite.
 
- A list of executabes (possibly brought into scope by
+ A list of executables (possibly brought into scope by
  :pkg-field:`build-tool-depends`) that are run after all other
  preprocessors. These executables are invoked as so: ``exe-name
  TARGETDIR [SOURCEDIRS] -- [GHCOPTIONS]``. The arguments are, in order a target dir for
  output, a sequence of all source directories with source files of
  local lib components that the given test stanza depends on, and
  following a double dash, all options cabal would pass to ghc for a
- build. They are expected to output a newline-seperated list of
+ build. They are expected to output a newline-separated list of
  generated modules which have been written to the targetdir
  (excepting, if written, the main module). This can
  be used for driving doctests and other discover-style tests generated
@@ -1344,7 +1344,7 @@ system-dependent values for these fields.
        but ``time-1.12.3`` bumps the lower bound on base to ``>=4.14``.  If we
        still want to compile with a ``ghc-8.8.*`` version of GHC that ships with
        ``base-4.13`` and with later GHC versions, then we can use ``time >=1.12
-       && (time <1.12.3 || time >1.12.3)``.
+       && (<1.12.3 || >1.12.3)``.
 
        Hackage shows deprecated and preferred versions for packages, such as for
        `containers <https://hackage.haskell.org/package/containers/preferred>`_
@@ -2747,21 +2747,27 @@ The :ref:`VCS fields<vcs-fields>` of ``source-repository`` are:
 
     This field is required.
 
+    .. include:: vcs/kind.rst
+
 .. pkg-field:: location: VCS location
 
     This field is required.
 
-.. pkg-field:: module: token
+    .. include:: vcs/location.rst
 
-    CVS requires a named module, as each CVS server can host multiple
-    named repositories.
+.. pkg-field:: module: token
 
     This field is required for the CVS repository type and should not be
     used otherwise.
 
+    CVS requires a named module, as each CVS server can host multiple
+    named repositories.
+
 .. pkg-field:: branch: VCS branch
 
     This field is optional.
+
+    .. include:: vcs/branch.rst
 
 .. pkg-field:: tag: VCS tag
 
@@ -2770,10 +2776,13 @@ The :ref:`VCS fields<vcs-fields>` of ``source-repository`` are:
     This might be used to indicate what sources to get if someone needs to fix a
     bug in an older branch that is no longer an active head branch.
 
+    .. include:: vcs/tag.rst
+
 .. pkg-field:: subdir: VCS subdirectory
 
     This field is optional but, if given, specifies a single subdirectory.
 
+    .. include:: vcs/subdir.rst
 
 .. _setup-hooks:
 
@@ -3081,8 +3090,8 @@ The auto generated :file:`PackageInfo_{pkgname}` module exports the constant
 which is defined as the version of your package as specified in the
 ``version`` field.
 
-Accessing package-related informations
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Accessing package-related information
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The auto generated :file:`PackageInfo_{pkgname}` module exports the following
 package-related constants:

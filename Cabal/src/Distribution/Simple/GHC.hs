@@ -5,7 +5,6 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TupleSections #-}
 
 -----------------------------------------------------------------------------
 
@@ -164,14 +163,16 @@ configure verbosity hcPath hcPkgPath conf0 = do
       (userMaybeSpecifyPath "ghc" hcPath conf0)
   let implInfo = ghcVersionImplInfo ghcVersion
 
-  -- Cabal currently supports ghc >= 7.0.1 && < 9.12
-  -- ... and the following odd development version
-  unless (ghcVersion < mkVersion [9, 12]) $
+  -- Cabal currently supports GHC less than `maxGhcVersion`
+  let maxGhcVersion = mkVersion [9, 14]
+  unless (ghcVersion < maxGhcVersion) $
     warn verbosity $
       "Unknown/unsupported 'ghc' version detected "
         ++ "(Cabal "
         ++ prettyShow cabalVersion
-        ++ " supports 'ghc' version < 9.12): "
+        ++ " supports 'ghc' version < "
+        ++ prettyShow maxGhcVersion
+        ++ "): "
         ++ programPath ghcProg
         ++ " is version "
         ++ prettyShow ghcVersion
@@ -627,6 +628,8 @@ startInterpreter verbosity progdb comp platform packageDBs = do
           }
   checkPackageDbStack verbosity comp packageDBs
   (ghcProg, _) <- requireProgram verbosity ghcProgram progdb
+  -- This doesn't pass source file arguments to GHC, so we don't have to worry
+  -- about using a response file here.
   runGHC verbosity ghcProg comp platform Nothing replOpts
 
 -- -----------------------------------------------------------------------------
