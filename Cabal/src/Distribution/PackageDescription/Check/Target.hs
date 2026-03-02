@@ -18,6 +18,8 @@ module Distribution.PackageDescription.Check.Target
 import Distribution.Compat.Prelude
 import Prelude ()
 
+import qualified Data.Set as Set
+
 import Distribution.CabalSpecVersion
 import Distribution.Compat.Lens
 import Distribution.Compiler
@@ -61,6 +63,10 @@ checkLibrary
           _libVisibility_
           libBuildInfo_
         ) = do
+    -- Note: checkModuleName checks are done once in
+    -- checkGenericPackageDescription to avoid redundant work when
+    -- traversing conditional branches.
+
     checkP
       (libName_ == LMainLibName && isSub)
       (PackageBuildImpossible UnnamedInternal)
@@ -74,10 +80,11 @@ checkLibrary
       (not . null $ signatures_)
       (PackageDistInexcusable SignaturesCabal2)
     -- autogen/includes checks.
+    let explicitModSet = Set.fromList (explicitLibModules lib)
     checkP
       ( not $
           all
-            (flip elem (explicitLibModules lib))
+            (`Set.member` explicitModSet)
             (libModulesAutogen lib)
       )
       (PackageBuildImpossible AutogenNotExposed)
@@ -144,6 +151,10 @@ checkExecutable
     let cet = CETExecutable exeName_
         modulePath_ = getSymbolicPath symbolicModulePath_
 
+    -- Note: checkModuleName checks are done once in
+    -- checkGenericPackageDescription to avoid redundant work when
+    -- traversing conditional branches.
+
     -- § Exe specific checks
     checkP
       (null modulePath_)
@@ -205,6 +216,11 @@ checkTestSuite
       TestSuiteUnsupported tt ->
         tellP (PackageBuildWarning $ TestsuiteNotSupported tt)
       _ -> return ()
+
+    -- Note: checkModuleName checks are done once in
+    -- checkGenericPackageDescription to avoid redundant work when
+    -- traversing conditional branches.
+
     checkP
       mainIsWrongExt
       (PackageBuildImpossible NoHsLhsMain)
@@ -256,6 +272,10 @@ checkBenchmark
       ) = do
     -- Target type/name (benchmark).
     let cet = CETBenchmark benchmarkName_
+
+    -- Note: checkModuleName checks are done once in
+    -- checkGenericPackageDescription to avoid redundant work when
+    -- traversing conditional branches.
 
     -- § Interface & bm specific tests.
     case benchmarkInterface_ of
@@ -665,11 +685,17 @@ checkAutogenModules ams bi = do
   -- PackageBuildImpossible and not merely PackageDistInexcusable.
   checkSpecVer
     CabalSpecV3_12
-    (elem autoInfoModuleName allModsForAuto)
+    (autoInfoModuleName `Set.member` allModsForAutoSet)
     (PackageBuildImpossible CVAutogenPackageInfoGuard)
   where
-    allModsForAuto :: [ModuleName]
-    allModsForAuto = ams ++ otherModules bi
+    allModsForAutoSet :: Set.Set ModuleName
+    allModsForAutoSet = Set.fromList (ams ++ otherModules bi)
+
+    autogenModulesSet :: Set.Set ModuleName
+    autogenModulesSet = Set.fromList (autogenModules bi)
+
+    otherModulesSet :: Set.Set ModuleName
+    otherModulesSet = Set.fromList (otherModules bi)
 
     autogenCheck
       :: Monad m
@@ -680,8 +706,8 @@ checkAutogenModules ams bi = do
       sv <- asksCM ccSpecVersion
       checkP
         ( sv >= CabalSpecV2_0
-            && elem name allModsForAuto
-            && notElem name (autogenModules bi)
+            && name `Set.member` allModsForAutoSet
+            && not (name `Set.member` autogenModulesSet)
         )
         (PackageDistInexcusable warning)
 
@@ -693,7 +719,7 @@ checkAutogenModules ams bi = do
     rebindableClashCheck name warning = do
       checkSpecVer
         CabalSpecV2_2
-        ( ( name `elem` otherModules bi
+        ( ( name `Set.member` otherModulesSet
               || name `elem` autogenModules bi
           )
             && checkExts
